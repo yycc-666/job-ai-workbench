@@ -174,13 +174,14 @@ docker compose up -d    # Redis + app，访问 http://localhost:8888/docs
 ├── prometheus.yml               # Prometheus 抓取配置
 ├── k8s/                         # K8s 清单（app/redis 各 Deployment + Service）
 │
-├── whpu_spider.py               # 爬虫（列表页）
-├── whpu_detail_spider.py        # 爬虫（详情页）
-├── data_clearner.py             # 规则版清洗
-├── d2_*.py                      # LLM 结构化抽取与评测
-├── d3_*.py                      # 切分 / 向量化 / v1 检索
-├── d4_*.py                      # v2 硬过滤 / v3 混合检索
-├── d6_*.py                      # 面试题生成
+├── scripts/                     # 数据流水线脚本（从项目根目录运行）
+│   ├── whpu_spider.py           # 爬虫（列表页）
+│   ├── whpu_detail_spider.py    # 爬虫（详情页）
+│   ├── data_clearner.py         # 规则版清洗
+│   ├── d2_*.py                  # LLM 结构化抽取与评测
+│   ├── d3_*.py                  # 切分 / 向量化 / v1 检索
+│   ├── d4_*.py                  # v2 硬过滤 / v3 混合检索
+│   └── d6_*.py                  # 面试题生成
 ├── 2026-09-1*_学习日志_*.md     # 学习日志
 │
 ├── eval/
@@ -196,6 +197,8 @@ docker compose up -d    # Redis + app，访问 http://localhost:8888/docs
     ├── embeddings.npz           # 向量缓存
     └── interview_qs.jsonl       # 面试题库（30 条目标岗位）
 ```
+
+流水线脚本统一从**项目根目录**运行（脚本内使用相对路径），如：`python scripts/d3_embeddings.py`
 
 ---
 
