@@ -57,6 +57,26 @@ curl -X POST http://127.0.0.1:8001/match \
 curl http://127.0.0.1:8001/interview/2384397
 ```
 
+### 5. 容器化运行（可选）
+
+```bash
+docker compose up -d    # Redis + app，访问 http://localhost:8888/docs
+```
+
+---
+
+## 部署（W3）
+
+| 方式 | 命令 | 说明 |
+| --- | --- | --- |
+| 本地 | `uvicorn app:app` | 需本机 Redis（Memurai） |
+| docker-compose | `docker compose up -d` | 官方 Redis + app，端口 8888 |
+| K8s | `kubectl apply -f k8s/` | 2 副本 + 探针，NodePort 30080 |
+
+- Dockerfile 内置 BGE 模型预下载，镜像开箱即用
+- `/metrics` 暴露 4 个 Prometheus 指标，`prometheus.yml` 已配好抓取
+- 验证记录与踩坑见 [`eval/report.md`](eval/report.md) W3D2–W3D4
+
 ---
 
 ## 技术架构
@@ -64,7 +84,7 @@ curl http://127.0.0.1:8001/interview/2384397
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        API 层（FastAPI）                     │
-│  /health   /match   /interview/{job_id}   /cache            │
+│  /health  /match  /interview/{job_id}  /cache  /metrics     │
 └──────────────────────┬──────────────────────────────────────┘
                        │
        ┌───────────────┼───────────────┐
@@ -143,36 +163,38 @@ curl http://127.0.0.1:8001/interview/2384397
 求职AI工作台/
 ├── README.md                    # 本文件
 ├── DATA_SOURCES.md              # 数据来源与合规声明
-├── resume.txt                   # 个人简历（用于匹配）
-│
-├── app.py                       # FastAPI 服务
-├── search.py                    # 检索模块（JobSearcher 类）
+├── resume.txt                   # 个人简历（用于匹配/出题）
 ├── requirements.txt
+│
+├── app.py                       # FastAPI 服务（4 接口 + /metrics）
+├── search.py                    # 检索模块（JobSearcher 类）
+│
+├── Dockerfile                   # 镜像（内置 BGE 模型预下载）
+├── docker-compose.yml           # Redis + app 编排
+├── prometheus.yml               # Prometheus 抓取配置
+├── k8s/                         # K8s 清单（app/redis 各 Deployment + Service）
 │
 ├── whpu_spider.py               # 爬虫（列表页）
 ├── whpu_detail_spider.py        # 爬虫（详情页）
 ├── data_clearner.py             # 规则版清洗
-├── d2_llm_extract.py            # LLM 结构化抽取
-├── d3_split.py                  # 切分
-├── d3_embed.py                  # 向量化
-├── d3_retrieve.py               # v1 检索
-├── d4_filter.py                 # v2 硬过滤
-├── d4_hybrid.py                 # v3 混合检索
-├── d6_gen_qs.py                 # 面试题生成
+├── d2_*.py                      # LLM 结构化抽取与评测
+├── d3_*.py                      # 切分 / 向量化 / v1 检索
+├── d4_*.py                      # v2 硬过滤 / v3 混合检索
+├── d6_*.py                      # 面试题生成
+├── 2026-09-1*_学习日志_*.md     # 学习日志
 │
 ├── eval/
 │   ├── queries.jsonl            # 60 条评测集
-│   ├── report.md                # 完整实验报告
+│   ├── report.md                # 完整实验报告（D2–D6 + W3 部署）
+│   ├── report_v1~v3.md          # 分版实验报告
 │   └── jd_index.csv
 │
 └── data/
-    ├── jd_llm_fixed.jsonl       # 292 条 LLM 结构化数据
+    ├── jd.jsonl                 # 规则版结构化数据
+    ├── jd_llm_fixed.jsonl       # 292 条 LLM 结构化数据（最终）
     ├── jd_chunks.jsonl          # chunk 切片
     ├── embeddings.npz           # 向量缓存
-    ├── match_v1.csv             # v1 检索结果
-    ├── match_v2.csv             # v2 检索结果
-    ├── match_v3.csv             # v3 检索结果
-    └── interview_qs.jsonl       # 面试题库
+    └── interview_qs.jsonl       # 面试题库（30 条目标岗位）
 ```
 
 ---
@@ -181,7 +203,7 @@ curl http://127.0.0.1:8001/interview/2384397
 
 本项目的所有数据都来自**公开页面**，遵循以下规则（见 `DATA_SOURCES.md`）：
 
-1. **白名单采集**：每条数据记录来源 URL 与采集时间
+1. **白名单采集**：每条数据记录来源 URL（采集时间见学习日志）
 2. **尊重 robots.txt**：单线程、限频 1–2 秒/请求；UA 如实标识
 3. **剔除个人身份字段**：只保留岗位描述类文本
 4. **仅个人学习使用**：不对外发布、不商用、不售卖
@@ -198,7 +220,7 @@ curl http://127.0.0.1:8001/interview/2384397
 
 - **数据层**：公司性质（国企/上市/私企）未进 chunk，影响部分查询
 - **检索层**：BGE-small 对前后端/软硬件反义词区分不够，靠 BM25 弥补
-- **服务层**：Redis 用 Memurai Developer 版，10 天自动停一次
+- **服务层**：本地开发用 Memurai（10 天自动停一次）；容器/K8s 已换官方 redis:7-alpine
 - **应用层**：题库仅覆盖 30 条目标岗位
 
 **14 条未命中的 query 中，13 条归因于评测集问题或数据本身，不是检索架构。**
@@ -207,8 +229,6 @@ curl http://127.0.0.1:8001/interview/2384397
 
 ## 后续计划
 
-- [ ] Docker 打包，K8s 部署（W3）
-- [ ] Prometheus 监控（W3）
 - [ ] Query 改写（LLM 扩写宽泛查询）
 - [ ] 公司性质字段进 chunk
 - [ ] 前端界面（Streamlit / Gradio）
@@ -220,7 +240,7 @@ curl http://127.0.0.1:8001/interview/2384397
 骆宇成 · 2027 届 · 求职方向：AI 应用开发 / 后端开发 / IT 数字化
 
 **项目周期**：2026.09.18 – 至今
-**W2 实验报告**：见 [`eval/report.md`](eval/report.md)
+**实验报告（D2–D6 + W3 部署）**：见 [`eval/report.md`](eval/report.md)
 
 ---
 
