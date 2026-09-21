@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境与密钥
+.env
+.venv/
+venv/
+
+# 浏览器临时配置（爬虫运行时产生，体积大）
+edge_temp_profile/
+
+# 原始爬取数据（含联系人等个人信息，不入库）
+whpu_jobs*.csv
+
+# 中间实验产物（jsonl 才是最终数据）
+data/*.csv
+
+# 草稿与临时文件
+规则版抽样.txt
+w1d4_notes.md
+
+# 系统文件
+Thumbs.db
+desktop.ini

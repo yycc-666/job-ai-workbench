@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-app
+  labels:
+    app: job-app
+spec:
+  selector:
+    app: job-app
+  ports:
+    - port: 80
+      targetPort: 8000
+      nodePort: 30080
+  type: NodePort

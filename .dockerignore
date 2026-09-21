@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Python 缓存
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.pytest_cache
+
+# 虚拟环境
+venv
+env
+.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# 大文件 / 无用文件
+docs/screenshots
+docs/demo.mp4
+*.log
+*.tmp
+
+# 敏感
+.env
+*.key
+config.local.py
+
+# 保留：
+# - app.py, search.py, requirements.txt
+# - data/ 目录（会 COPY 进镜像）
+# - eval/ 目录（评测数据）
+# - resume.txt
