@@ -1,0 +1,5 @@
+# Git 钩子用 sh 执行，必须是 LF，否则 shebang 会带上 \r 而无法运行
+scripts/git-hooks/* text eol=lf
+
+# 属性文件自身也用 LF，避免换行符影响规则解析
+.gitattributes text eol=lf

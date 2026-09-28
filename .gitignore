@@ -8,18 +8,21 @@ __pycache__/
 .venv/
 venv/
 
-# 浏览器临时配置（爬虫运行时产生，体积大）
+# 浏览器临时配置（爬虫运行时产生，体积大，含 Cookies / Login Data，务必放在项目外）
 edge_temp_profile/
 
-# 原始爬取数据（含联系人等个人信息，不入库）
+# 原始爬取数据（含联系人等个人信息，不入库，也不要放进项目目录）
 whpu_jobs*.csv
 
 # 中间实验产物（jsonl 才是最终数据）
 data/*.csv
+data/d2_report.txt
 
 # 草稿与临时文件
 规则版抽样.txt
 w1d4_notes.md
+*.bak
+*.tmp
 
 # 系统文件
 Thumbs.db

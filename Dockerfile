@@ -35,7 +35,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-zh-v1.5')"
 
 # 第四步：拷代码和数据
-COPY app.py search.py resume.txt ./
+COPY app.py search.py ./
+# resume.txt 是个人简历，不 COPY 进镜像（search.py 并不读取它）
 COPY data/ ./data/
 COPY eval/ ./eval/
 

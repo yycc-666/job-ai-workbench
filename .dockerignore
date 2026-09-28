@@ -31,9 +31,12 @@ docs/demo.mp4
 .env
 *.key
 config.local.py
+# 个人简历：不随镜像分发（search.py 并不读取它）
+resume.txt
+# 含联系方式的历史中间报告
+data/d2_report.txt
 
 # 保留：
 # - app.py, search.py, requirements.txt
 # - data/ 目录（会 COPY 进镜像）
 # - eval/ 目录（评测数据）
-# - resume.txt

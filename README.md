@@ -181,7 +181,10 @@ docker compose up -d    # Redis + app，访问 http://localhost:8888/docs
 │   ├── d2_*.py                  # LLM 结构化抽取与评测
 │   ├── d3_*.py                  # 切分 / 向量化 / v1 检索
 │   ├── d4_*.py                  # v2 硬过滤 / v3 混合检索
-│   └── d6_*.py                  # 面试题生成
+│   ├── d6_*.py                  # 面试题生成
+│   ├── redact_pii.py            # 发布前脱敏（手机号 / 邮箱 / 身份证）
+│   ├── check_pii.py             # 提交前 PII 检查
+│   └── git-hooks/pre-commit     # Git 钩子：命中 PII 拒绝提交
 ├── 2026-09-1*_学习日志_*.md     # 学习日志
 │
 ├── eval/
@@ -208,8 +211,9 @@ docker compose up -d    # Redis + app，访问 http://localhost:8888/docs
 
 1. **白名单采集**：每条数据记录来源 URL（采集时间见学习日志）
 2. **尊重 robots.txt**：单线程、限频 1–2 秒/请求；UA 如实标识
-3. **剔除个人身份字段**：只保留岗位描述类文本
+3. **不采集并脱敏联系方式**：爬虫只取岗位描述类字段；历史数据里残留的手机号、邮箱已用 `scripts/redact_pii.py` 统一脱敏为 `[手机号已脱敏]`、`[邮箱已脱敏]`
 4. **仅个人学习使用**：不对外发布、不商用、不售卖
+5. **提交前自动拦截**：`pwsh scripts/install_hooks.ps1` 装好钩子后，提交内容命中手机号 / 邮箱会直接失败
 
 **绝对不碰**：
 - 需要登录才能看的页面

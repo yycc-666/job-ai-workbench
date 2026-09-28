@@ -1,3 +1,5 @@
+import os #读取环境变量，避免把本机路径写死在代码里
+from pathlib import Path
 from DrissionPage import ChromiumPage, ChromiumOptions #模拟网站 获取网站信息
 from bs4 import BeautifulSoup #翻译HTML文档
 from urllib.parse import urljoin #将相对路径拼成完整网址
@@ -10,8 +12,10 @@ start_url = "https://whpu.91wllm.cn/job/search/domain/whpu/title//city/320000%2C
 
 def create_page():  #定义函数
     co = ChromiumOptions() #创建一份“浏览器启动配置”
-    co.set_browser_path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe") #浏览器所在位置
-    co.set_user_data_path(r"D:\vscode学习\求职AI工作台\edge_temp_profile") #给这个模拟浏览器单独开一个用户文件夹
+    #浏览器所在位置（可用环境变量 WHPU_EDGE_BROWSER 覆盖）
+    co.set_browser_path(os.getenv("WHPU_EDGE_BROWSER", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"))
+    #给这个模拟浏览器单独开一个用户文件夹（放到项目外，避免 Cookies / 登录数据混进仓库）
+    co.set_user_data_path(os.getenv("WHPU_EDGE_PROFILE", str(Path.home() / ".whpu_edge_profile")))
     co.set_argument('--disable-extensions') #不允许加载任何插件
     return ChromiumPage(co) #返回模拟的浏览器页面
 

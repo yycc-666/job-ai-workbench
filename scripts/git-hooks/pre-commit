@@ -1,0 +1,5 @@
+#!/bin/sh
+# 提交前检查：暂存内容命中手机号 / 邮箱 / 身份证号就直接拒绝提交
+# 安装：pwsh scripts/install_hooks.ps1
+# 临时跳过：git commit --no-verify（不推荐）
+exec python scripts/check_pii.py

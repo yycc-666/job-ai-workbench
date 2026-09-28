@@ -1,3 +1,5 @@
+import os #读取环境变量，避免把本机路径写死在代码里
+from pathlib import Path
 from DrissionPage import ChromiumPage, ChromiumOptions  #模拟网站 获取网站信息
 from bs4 import BeautifulSoup #翻译HTML文档
 import csv 
@@ -5,8 +7,10 @@ import time
 
 def create_page():
     co = ChromiumOptions()
-    co.set_browser_path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-    co.set_user_data_path(r"D:\vscode学习\求职AI工作台\edge_temp_profile")
+    #浏览器所在位置（可用环境变量 WHPU_EDGE_BROWSER 覆盖）
+    co.set_browser_path(os.getenv("WHPU_EDGE_BROWSER", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"))
+    #给这个模拟浏览器单独开一个用户文件夹（放到项目外，避免 Cookies / 登录数据混进仓库）
+    co.set_user_data_path(os.getenv("WHPU_EDGE_PROFILE", str(Path.home() / ".whpu_edge_profile")))
     co.set_argument('--disable-extensions')
     return ChromiumPage(co)
 
@@ -20,7 +24,7 @@ def get_job_detail(page, url):
     # 初始化一个字典存放详情数据
     detail = {
         "职能类别": "", "招聘人数": "", "工作经验": "", "语言要求": "",
-        "联系人": "", "联系人电话": "", "需求专业": "", "工作地址": "",
+        "需求专业": "", "工作地址": "",
         "公司名称": "", "单位性质": "", "单位行业": "", "单位规模": "",
         "职位详情": ""
     }
@@ -36,8 +40,7 @@ def get_job_detail(page, url):
         elif "招聘人数" in text: detail["招聘人数"] = value
         elif "工作经验" in text: detail["工作经验"] = value
         elif "语言要求" in text: detail["语言要求"] = value
-        elif "联系人" in text and "电话" not in text: detail["联系人"] = value
-        elif "联系人电话" in text or "联系电话" in text: detail["联系人电话"] = value
+        # 隐私：不采集联系人 / 联系电话等个人身份字段，只保留岗位描述类信息
         elif "需求专业" in text: detail["需求专业"] = value
 
     # 2. 提取工作地址
@@ -71,7 +74,8 @@ def get_job_detail(page, url):
 # ===== 主程序 =====
 # 1. 读取昨天保存的 whpu_jobs.csv
 jobs = []
-with open("whpu_jobs.csv", "r", encoding="utf-8-sig") as f:
+# 输入是列表页爬虫产出的本地中间文件（含联系方式，禁止提交）
+with open(os.getenv("WHPU_JOBS_CSV", "whpu_jobs.csv"), "r", encoding="utf-8-sig") as f:
     reader = csv.DictReader(f)
     for row in reader:
         jobs.append(row)
@@ -98,11 +102,12 @@ for i, job in enumerate(jobs):
 page.quit()
 
 # 3. 保存到新的 CSV 文件
-with open("whpu_jobs_detail.csv", "w", newline="", encoding="utf-8-sig") as f:
+# 注意：输出文件含联系人 / 联系电话，属于他人个人信息，禁止提交（.gitignore 已排除）
+with open(os.getenv("WHPU_JOBS_DETAIL_CSV", "whpu_jobs_detail.csv"), "w", newline="", encoding="utf-8-sig") as f:
     fieldnames = [
         "title", "company", "salary", "pub_date", "url",  # 列表页原有字段
         "职能类别", "招聘人数", "工作经验", "语言要求", 
-        "联系人", "联系人电话", "需求专业", "工作地址",
+        "需求专业", "工作地址",
         "公司名称", "单位性质", "单位行业", "单位规模", "职位详情"
     ]
     writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
