@@ -17,7 +17,7 @@ spec:
       containers:
         - name: app
           # 与 docker-compose.yml 保持同一个 tag（原 compose 写的是 0.1，两处不一致）
-          image: job-search:0.2
+          image: job-search:0.3
           # 本地镜像，不从仓库拉取；换 tag 后需要用 ctr images import 重新导入
           imagePullPolicy: Never
           ports:

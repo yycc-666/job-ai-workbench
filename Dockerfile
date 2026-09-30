@@ -23,9 +23,10 @@ WORKDIR /app
 ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 第一步：装 CPU 版 torch
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --no-deps \
     torch==2.5.1 \
-    --index-url https://download.pytorch.org/whl/cpu
+    --index-url https://download.pytorch.org/whl/cpu \
+    --default-timeout=300 --retries 5
 
 # 第二步：装其他依赖
 COPY requirements.txt .

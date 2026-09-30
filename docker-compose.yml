@@ -12,7 +12,7 @@ services:
 
   app:
     # 与 k8s/app-deployment.yaml 保持同一个 tag（原来这里是 0.1，两处不一致）
-    image: job-search:0.2
+    image: job-search:0.3
     container_name: job-app
     restart: unless-stopped
     ports:
