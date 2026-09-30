@@ -1,7 +1,9 @@
-# W2 实验报告：从 TF-IDF 到混合检索服务
+# W2–W3 实验报告：从 TF-IDF 到混合检索服务
 
-**周期**：2026.09.25 – 2026.10.01
-**目标**：把 v0 TF-IDF 匹配升级为完整 RAG 检索系统，并服务化
+**周期**：2026.09.21 – 2026.09.30
+**目标**：把 v0 TF-IDF 匹配升级为完整 RAG 检索系统，并服务化；后续完成容器化与 K8s 部署
+
+> 本文第 0～8 章是 W2 的检索实验；末尾 W3D2～W3D4 是随后的容器化、K8s 部署与监控记录。
 
 ## 目录
 
@@ -14,6 +16,12 @@
 - [6. D6：面试题生成](#6-d6面试题生成)
 - [7. 核心发现与已知短板](#7-核心发现与已知短板)
 - [8. 面试要点速查](#8-面试要点速查)
+
+W3 部署记录（追加章节）：
+
+- [W3D2：容器编排（docker-compose）](#w3d2容器编排docker-compose)
+- [W3D3：K8s 部署](#w3d3k8s-部署)
+- [W3D4：Prometheus 监控](#w3d4prometheus-监控)
 
 ---
 
@@ -173,7 +181,7 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 2. **BM25 混合检索（v3）是最大单步提升（Hit@5 +25%），修复了 6 条关键词匹配场景**
 3. **14 条未命中已归因，其中 13 条不在检索射程内**
 
-### 4.4 v3 修好的 6 条（BM25 关键贡献）
+### 4.4 v3 修好的 6 条（BM25 关键贡献，按 Top-10 统计）
 
 - q003 东莞的研发岗位
 - q011 后端开发岗位
@@ -182,10 +190,14 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 - q033 需要 C 语言开发岗位
 - q054 东莞机器视觉本科27届
 
-### 4.5 v3 改坏的 2 条
+### 4.5 v3 改坏的 2 条（按 Top-10 统计）
 
 - **q031 需要会Python的岗位**：BGE 对"Python"语义不敏感，BM25 也没救
 - **q043 国企里的IT技术岗**：公司属性未进 chunk，三版都无解
+
+> **口径说明**：上面 4.4、4.5 两份清单是**按 Top-10 统计**的——评测脚本 `d4_eval_v3.py` 里判定命中的切片写的是 `[:10]`。它与 Hit@10 的变化吻合：0.7000 → 0.7667，净增 4 条 = 6 − 2。
+>
+> 如果按 Top-5 统计，修好的是 10 条、改坏的是 2 条（q001、q015），与 Hit@5 的 +0.1333（≈8 条）吻合。**两套都正确，只是量的不是同一件事**——Top-10 上的"改坏"是召回退步（掉出前 10），Top-5 上的"改坏"是排序退步（仍在榜上，但从前 5 掉到了 6～10 名）。
 
 ### 4.6 v3 仍未命中归因（14 条）
 
@@ -211,12 +223,12 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 ### 5.1 方法
 
 - `search.py`：检索逻辑封装为 `JobSearcher` 类，模型和数据在服务启动时加载一次
-- `app.py`：FastAPI 服务，提供 4 个接口（D6 后扩展为 4 个）
+- `app.py`：FastAPI 服务，初始 3 个接口，D6 后扩展到 4 个（W3D4 再加 `/metrics`，共 5 个）
   - `GET /health`：健康检查
   - `POST /match`：检索接口
   - `GET /interview/{job_id}`：面试题接口（D6 新增）
-  - `DELETE /cache`：清空缓存
-- Redis 缓存：key = `md5(query + top_k)`，TTL = 1 小时，异常时降级为无缓存
+  - `DELETE /cache`：清理缓存（2026-09-30 起改为只清 `match:` 前缀，不再用 `flushdb()`）
+- Redis 缓存：key = `md5(query|top_k)`，TTL = 1 小时，异常时降级为无缓存
 
 ### 5.2 验证结果
 
@@ -239,12 +251,13 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 
 - Redis 未启动时：服务照常工作，`/health` 返回 `cache: "off"`
 - Redis 中途挂掉：读写异常被 try/except 捕获，检索不中断
+- **连得上但不返回**（2026-09-30 补）：原来只设了 `socket_connect_timeout`、没设 `socket_timeout`，这种场景下请求会**永久挂住**。现在两个超时都设为 2 秒，并显式配置 `retry=Retry(NoBackoff(), 0)`——因为 redis-py 8.x 的默认策略是重试 10 次，"删掉弃用的旧参数"反而会让请求挂得更久
 
 ### 5.5 面试要点
 
-1. **为什么服务化**：脚本方式每次运行要重载 BGE 模型 5–10 秒；服务化后模型常驻内存，只在启动时加载一次，请求响应进入毫秒级
+1. **为什么服务化**：脚本方式每次运行都要重载 BGE 模型（本机 Windows 热启动约 5–10 秒，容器冷启动 90 秒以上）；服务化后模型常驻内存，只在启动时加载一次，请求响应进入毫秒级
 2. **为什么加缓存**：query → 结果映射重复计算浪费算力，加 Redis 缓存后重复请求从 31 ms 降到 2.4 ms
-3. **key 设计**：`md5(query + top_k)` —— md5 避免特殊字符，加 `top_k` 防止不同深度互相覆盖
+3. **key 设计**：`md5(query|top_k)` —— md5 避免特殊字符，加 `top_k` 防止不同深度互相覆盖
 4. **降级设计**：Redis 是加速手段，不是必需依赖，挂了不影响核心检索功能
 
 ---
@@ -328,7 +341,7 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 
 - `docker-compose.yml` 定义两个服务：
   - `redis`：官方 `redis:7-alpine`，启用 healthcheck
-  - `app`：`job-search:0.1`，通过 `REDIS_HOST=redis` 连接
+  - `app`：`job-search:0.3`，通过 `REDIS_HOST=redis` 连接
 - `depends_on: service_healthy` 保证 Redis 就绪后再启动 app
 
 ### 验证结果
@@ -369,6 +382,10 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 
 ## W3D3：K8s 部署
 
+> **2026-09-30 更新**：本节最初记录的是在 Docker Desktop 自带 Kubernetes 上的部署。
+> 后来为了让新镜像上线，发现该集群的节点容器在宿主机上不可见（`docker ps` 查不到），
+> 无法 `docker exec` 进去导入本地镜像，因此**改用自建的 kind 集群**重新部署。
+
 ### YAML 文件
 
 - `k8s/redis-deployment.yaml`：Redis 部署，含 liveness/readiness probe
@@ -376,42 +393,113 @@ v1 在 MRR 上提升显著（+24.5%），说明向量检索让相关 JD 的**排
 - `k8s/app-deployment.yaml`：app 部署，2 副本，`imagePullPolicy: Never`
 - `k8s/app-service.yaml`：NodePort 服务，30080
 
+### 部署环境
+
+| 项 | 值 |
+| --- | --- |
+| 集群 | Docker Desktop 自带 Kubernetes（初版）→ 自建 kind 集群（2026-09-30 起） |
+| 节点 | `desktop-control-plane`（v1.34.3）→ `demo-control-plane`（v1.37.0） |
+| 命名空间 | `default`（初版）→ `job-search`（2026-09-30 起） |
+
+换集群的原因和换命名空间的原因都写在下面「踩过的坑」里。
+
 ### 部署结果
 
 | 检查项 | 结果 |
 | --- | --- |
 | Pod 数量 | 3（2 app + 1 redis） |
-| Pod 状态 | 全部 `1/1 Running` |
+| Pod 状态 | 全部 `1/1 Running`，`RESTARTS 0` |
 | Service 后端 | app: 2 endpoints；redis: 1 endpoint |
-| 启动探测延迟 | app pod 需 90s 以上（BGE 模型加载慢） |
+| 新 Pod 就绪耗时 | 30 秒（改用 `startupProbe` 之后） |
 
 ### 关键设计
 
 - **服务发现**：app 通过 `REDIS_HOST=redis` 走 K8s DNS 解析到 redis Service
 - **多副本**：`replicas: 2` 演示水平扩展
-- **本地镜像**：`imagePullPolicy: Never` + `ctr images import` 手动导入
-- **探测时间**：app pod `initialDelaySeconds: 90`，避免 BGE 加载期间被误杀
+- **本地镜像**：`imagePullPolicy: Never`，镜像需提前进入节点容器的 containerd（见坑 1）
+- **启动探测**：用 `startupProbe`（10 秒 × 18 次 = 最长 180 秒），而不是给 liveness 设 `initialDelaySeconds`（见坑 2）
 
 ### 验证结果
 
 - `/health`：`{status:ok, jd_count:292, cache:on}`
 - `/match`：返回 3 条武汉 AI 岗（2384112、2376253、2369258）
 - **负载均衡**：10 次请求，两个 pod 各处理 5 次
+- **日志格式**（2026-09-30 起）：带时间戳、级别与 logger 名，例：
+
+  ```
+  2026-09-30 09:16:35 INFO [job-search] 启动完成，共加载 292 条 JD
+  ```
 
 ### 踩过的坑
 
-1. **containerd image store 必须启用**：Docker Desktop 新版 K8s 用 kind，kind 需要 containerd 后端
-2. **镜像不在 K8s 的 containerd 里**：`docker images` 能看到的镜像，K8s 看不到。需手动导入：
+#### 坑 1：本地镜像进不了集群（2026-09-30 定位）
+
+**最初以为**：镜像需要手动用 `ctr images import` 导入 K8s 节点的 containerd。
+
+**实际原因**：Docker Desktop 的 Kubernetes **节点容器在宿主机上不可见**——`docker ps -a` 里查不到 `desktop-control-plane`，所以无法 `docker exec` 进去执行导入。改了镜像 tag（0.2 → 0.3）之后，新 Pod 一直卡住：
+
+```
+Warning  ErrImageNeverPull  kubelet
+  Container image "job-search:0.3" is not present with pull policy of Never
+```
+
+**排查的关键一步**是 `kubectl describe pod` 里的这一行：
+
+```
+Successfully assigned default/job-app-... to desktop-control-plane
+```
+
+它说明 Pod 跑的节点，和我执行导入的那个容器（`demo-control-plane`）**根本不是同一个**。
+
+**试过的替代方案**：
+
+| 方案 | 结果 |
+| --- | --- |
+| 推镜像到 Docker Hub，让 k8s 自己拉 | ❌ `registry-1.docker.io` / `hub.docker.com` 连接超时 |
+| 改用自建的 kind 集群（节点容器可见） | ✅ 成功 |
+
+**最终做法**：导出 kind 节点的 kubeconfig、把 `server` 改成宿主机的映射端口；用独立命名空间 `job-search` 部署（该集群里已有一个叫 `redis` 的 Deployment，避免撞名）。
+
+**结论**：这个机制**依赖 Docker Desktop 的内部实现，不可复现**。更通用的做法是推送到镜像仓库由 k8s 拉取——本次因网络受限未能采用。操作步骤已完整记录，不再依赖"记忆中的做法"。
+
+#### 坑 2：`startupProbe` 与 `initialDelaySeconds`（2026-09-30 修正）
+
+**原来的配置**：只有 liveness 和 readiness，靠 `initialDelaySeconds: 90` 等启动完成。
+
+**问题**：BGE 模型加载实测就要 90 秒以上，**两个数字卡在边界上**。机器稍慢或镜像冷启动，启动就会超过 90 秒，liveness 开始失败并杀掉容器；重启后又加载模型、又超时——进入 CrashLoopBackOff，而日志里只看到"Pod 反复重启"。
+
+**改后**：
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  periodSeconds: 10
+  failureThreshold: 18      # 10 × 18 = 最长 180 秒
+```
+
+`startupProbe` 成功之前，liveness 和 readiness **都不生效**，所以启动慢不会再被误杀；启动成功后 liveness 又能立刻正常监护。加了它之后，两个探针的 `initialDelaySeconds` 就删掉了——启动窗口由 startup 负责。
+
+**效果**：Ready 的**理论下限从 60 秒降到 10 秒**（前者由 readiness 的 `initialDelaySeconds` 决定）。实测新 Pod 30 秒就绪。
+
+> 注：30 秒是在节点已热的情况下观测到的，与 9 天前的冷启动不可直接对比；**"下限降低"才是配置层面确定的结论**。
+
+#### 坑 3：其他
+
+- **containerd image store**：Docker Desktop 的 Kubernetes 依赖 containerd 后端，需在设置中确认启用
+- **NodePort 在本地集群里从宿主访问不到**：30080 需要在建集群时配置 `extraPortMappings`，否则只能用 `kubectl port-forward`（这也是本次全程用的方式）
 
 ## W3D4：Prometheus 监控
 
 ### 方法
 
-- `app.py` 加 4 个 Prometheus 指标：
+- `app.py` 加 5 个 Prometheus 指标：
   - `match_requests_total{cached}`：Counter，按是否命中缓存打标签
   - `match_latency_seconds`：Histogram，桶 [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
   - `interview_requests_total{status}`：Counter，按 found/not_found 打标签
   - `cache_hits_total`：Counter
+  - `app_resident_memory_bytes`：Gauge，进程常驻内存（2026-09-30 新增；读 `/proc/self/status` 的 `VmRSS`，用于校准 K8s 的 `requests`）
 - `/metrics` 端点用 `prometheus_client.generate_latest()` 输出
 - Prometheus 容器通过 `host.docker.internal:8888` 抓取 port-forward 后的服务
 
