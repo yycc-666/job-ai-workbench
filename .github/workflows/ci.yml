@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # 首次要下载模型 + 跑检索测试，给足时间；超时不会挂死流水线
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 与 Dockerfile 的 python:3.11-slim 保持一致——
+          # CI 的意义是"在接近生产的环境里先跑一遍"
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          # 关键：先装 CPU 版 torch。否则下面装 sentence-transformers 时
+          # 会拉 CUDA 版本，多出两个多 GB，CI 直接超时。
+          # Dockerfile 里用的是同一个源。
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: 缓存 BGE 模型
+        # 模型约 92MB，缓存之后后续每次 CI 不用重新下载
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-zh-v1.5
+
+      - name: 静态检查
+        # 暂时不卡流水线：先把格式问题暴露出来，等代码清理干净
+        # 之后把这行 continue-on-error 删掉，它就变成真正的门禁
+        run: ruff check .
+        continue-on-error: true
+
+      - name: 跑测试
+        env:
+          # search.py 里也设了这个，这里再设一次是为了 pip/huggingface 下载阶段
+          HF_ENDPOINT: https://hf-mirror.com
+        run: python -m pytest -q

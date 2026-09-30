@@ -7,6 +7,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
 ![BGE](https://img.shields.io/badge/BGE--small--zh--v1.5-embedding-orange)
+![CI](https://github.com/yycc-666/job-ai-workbench/actions/workflows/ci.yml/badge.svg)
 
 ---
 
