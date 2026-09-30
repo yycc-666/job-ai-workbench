@@ -16,7 +16,9 @@ spec:
     spec:
       containers:
         - name: app
+          # 与 docker-compose.yml 保持同一个 tag（原 compose 写的是 0.1，两处不一致）
           image: job-search:0.2
+          # 本地镜像，不从仓库拉取；换 tag 后需要用 ctr images import 重新导入
           imagePullPolicy: Never
           ports:
             - containerPort: 8000
@@ -26,24 +28,37 @@ spec:
             - name: REDIS_PORT
               value: "6379"
           resources:
+            # requests = 调度依据，limits = 硬上限。
+            # 原来 requests 512Mi / limits 2Gi（差 4 倍），调度器会低估占用，
+            # 节点内存紧张时容易被 OOMKill。按实测常驻内存上调到 1Gi。
             requests:
-              memory: "512Mi"
-              cpu: "200m"
+              memory: "640Mi"
+              cpu: "300m"
             limits:
               memory: "2Gi"
               cpu: "1000m"
+          # startupProbe 只管"启动要多久"：10s × 18 = 最长 180 秒。
+          # 在它成功之前，liveness 和 readiness 都不生效，
+          # 所以不会再出现"BGE 加载 90 秒期间被 liveness 杀掉"的情况。
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 18
+          # 启动成功后才开始：判断进程是否还活着
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 90
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+          # 判断是否可以接流量
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5
+            failureThreshold: 3
