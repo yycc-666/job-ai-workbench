@@ -54,3 +54,35 @@ def test_cache_hit_when_redis_available(client):
     second = client.post("/match", json=payload).json()
     assert first["cached"] is False
     assert second["cached"] is True
+
+
+def test_clear_cache_keeps_other_keys(client):
+    """清缓存只能清自己的前缀，不能动别人的数据。"""
+    if client.get("/health").json().get("cache") != "on":
+        pytest.skip("当前没有 Redis，跳过")
+    r = app_module.redis_client
+    r.set("other-service:key", "不许被删")
+    try:
+        assert client.delete("/cache").status_code == 200
+        assert r.get("other-service:key") == "不许被删"   # ← 关键断言
+    finally:
+        r.delete("other-service:key")
+
+
+@pytest.mark.parametrize("evil_prefix", ["*", "", "other-service:"])
+def test_clear_cache_ignores_prefix_param(client, evil_prefix):
+    """接口不接受前缀参数——传了也必须无效。
+
+    回归保护：如果以后有人把 prefix 参数加回来，
+    传 ?prefix=* 就等于清空整库，这条测试会立刻失败。
+    """
+    if client.get("/health").json().get("cache") != "on":
+        pytest.skip("当前没有 Redis，跳过")
+    r = app_module.redis_client
+    r.set("other-service:key", "不许被删")
+    try:
+        resp = client.delete("/cache", params={"prefix": evil_prefix})
+        assert resp.status_code == 200
+        assert r.get("other-service:key") == "不许被删"   # ← 关键断言
+    finally:
+        r.delete("other-service:key")

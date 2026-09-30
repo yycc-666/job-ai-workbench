@@ -6,6 +6,8 @@ import time
 from contextlib import asynccontextmanager
 
 import redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import (
     Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
@@ -54,7 +56,9 @@ async def lifespan(app: FastAPI):
     try:
         redis_client = redis.Redis(
             host=REDIS_HOST, port=REDIS_PORT, decode_responses=True,
-            socket_connect_timeout=2
+            socket_connect_timeout=2,       # 连接阶段超时
+            socket_timeout=2,               # 读写阶段超时
+            retry=Retry(NoBackoff(), 0),     # 不重试：缓存超时直接交给上层降级
         )
         redis_client.ping()
         print("Redis 连接成功")
@@ -141,15 +145,33 @@ def interview(job_id: str):
     return result
 
 
+# 本服务允许清理的 key 前缀。写成常量而不是参数——
+# 一旦前缀由调用方决定，传 ?prefix=* 就等于清空整库。
+CACHE_PREFIXES = ("match:",)
+
+
 @app.delete("/cache")
 def clear_cache():
-    if redis_client:
-        try:
-            redis_client.flushdb()
-            return {"status": "cleared"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"清缓存失败：{e}")
-    return {"status": "no cache"}
+    """只清理本服务的缓存键（前缀 match:）。"""
+    if not redis_client:
+        return {"status": "no cache"}
+
+    deleted = 0
+    try:
+        for prefix in CACHE_PREFIXES:
+            batch = []
+            for key in redis_client.scan_iter(match=f"{prefix}*", count=500):
+                batch.append(key)
+                if len(batch) >= 500:
+                    redis_client.delete(*batch)      # 批量删，少很多网络往返
+                    deleted += len(batch)
+                    batch.clear()
+            if batch:
+                redis_client.delete(*batch)
+                deleted += len(batch)
+        return {"status": "cleared", "deleted": deleted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"清缓存失败：{e}")
 
 
 @app.get("/metrics")
