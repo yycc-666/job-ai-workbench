@@ -1,0 +1,5 @@
+# 数据采集脚本所需依赖（只在重跑爬虫时安装）
+# 用法：python -m pip install -r requirements-crawler.txt
+DrissionPage>=4.1
+beautifulsoup4>=4.12
+lxml>=5.0
