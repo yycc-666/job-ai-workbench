@@ -27,7 +27,11 @@
 ### 1. 环境准备
 
 ```bash
+# 只运行服务（推荐）：
 python -m pip install -r requirements.txt
+
+# 如果要重跑数据采集（爬虫）：
+python -m pip install -r requirements-crawler.txt
 ```
 
 ### 2. 下载 BGE 模型（首次运行自动下载，约 100MB）
