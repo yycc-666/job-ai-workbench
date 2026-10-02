@@ -1,0 +1,5 @@
+# -*- coding: utf-8 -*-
+# 简易界面所需的依赖（只在跑 Streamlit 页面时安装）
+# 用法：python -m pip install -r requirements-ui.txt
+# 注意：requests 在 requirements.txt 里已经有了，这里不重复列
+streamlit>=1.40
